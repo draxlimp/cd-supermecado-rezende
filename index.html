@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CD Supermercado Rezende 2026</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- JSZip -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=Space+Grotesk:wght@500;700&display=swap" rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        rezendeRed: '#DC2626',
+                        rezendeDark: '#0a0a0a',
+                        rezendeGlass: 'rgba(20, 20, 20, 0.6)',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        display: ['Space Grotesk', 'sans-serif'],
+                    },
+                    animation: {
+                        'float-slow': 'float 20s linear infinite',
+                        'float-medium': 'float 15s linear infinite',
+                        'pulse-glow': 'pulseGlow 2s infinite',
+                        'fade-in': 'fadeIn 0.3s ease-out forwards',
+                    },
+                    keyframes: {
+                        float: {
+                            '0%': { transform: 'translateY(100vh) rotate(0deg)', opacity: '0' },
+                            '10%': { opacity: '0.2' },
+                            '90%': { opacity: '0.2' },
+                            '100%': { transform: 'translateY(-20vh) rotate(360deg)', opacity: '0' },
+                        },
+                        pulseGlow: {
+                            '0%, 100%': { boxShadow: '0 0 5px rgba(220, 38, 38, 0.5)' },
+                            '50%': { boxShadow: '0 0 20px rgba(220, 38, 38, 0.8)' },
+                        },
+                        fadeIn: {
+                            'from': { opacity: '0', transform: 'translateY(10px)' },
+                            'to': { opacity: '1', transform: 'translateY(0)' }
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #050505;
+            color: #ffffff;
+            overflow-x: hidden; /* Evita scroll horizontal das animações */
+        }
+        
+        .glass-panel {
+            background: rgba(20, 20, 20, 0.7);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        .folder-card:hover {
+            background: rgba(220, 38, 38, 0.1);
+            border-color: rgba(220, 38, 38, 0.5);
+            transform: translateY(-4px);
+        }
+
+        /* Equalizador Animado */
+        .bar {
+            width: 3px;
+            background: #DC2626;
+            animation: equalizer 1s infinite ease-in-out;
+        }
+        .bar:nth-child(2) { animation-delay: 0.2s; }
+        .bar:nth-child(3) { animation-delay: 0.4s; }
+        
+        @keyframes equalizer {
+            0%, 100% { height: 4px; }
+            50% { height: 16px; }
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+        const ZIP_FILENAME = "musicas.zip";
+
+        // --- BACKGROUND ANIMATION ---
+        const BackgroundParticles = () => {
+            const items = useMemo(() => Array.from({ length: 25 }).map((_, i) => ({
+                id: i,
+                left: Math.random() * 100,
+                delay: Math.random() * 20,
+                duration: 15 + Math.random() * 15,
+                icon: Math.random() > 0.6 ? "fa-cart-shopping" : "fa-music",
+                size: 12 + Math.random() * 24
+            })), []);
+
+            return (
+                <div className="fixed inset-0 pointer-events-none z-0">
+                    {items.map(item => (
+                        <div 
+                            key={item.id}
+                            className="absolute text-rezendeRed opacity-10"
+                            style={{
+                                left: `${item.left}%`,
+                                bottom: '-50px',
+                                fontSize: `${item.size}px`,
+                                animation: `float ${item.duration}s linear infinite`,
+                                animationDelay: `${item.delay}s`
+                            }}
+                        >
+                            <i className={`fas ${item.icon}`}></i>
+                        </div>
+                    ))}
+                    {/* Gradiente sutil no fundo */}
+                    <div className="absolute inset-0 bg-gradient-to-b from-black via-transparent to-black opacity-90"></div>
+                </div>
+            );
+        };
+
+        // --- ICON HELPER ---
+        const FileIcon = ({ isFolder, name }) => {
+            if (isFolder) return <i className="fas fa-folder text-yellow-500 text-4xl mb-2 drop-shadow-md"></i>;
+            if (name.endsWith('.pdf')) return <i className="fas fa-file-pdf text-red-400 text-xl"></i>;
+            if (name.endsWith('.txt')) return <i className="fas fa-file-text text-gray-400 text-xl"></i>;
+            return <i className="fas fa-music text-rezendeRed text-xl"></i>;
+        };
+
+        function App() {
+            // Estado
+            const [fileTree, setFileTree] = useState({}); // Estrutura em árvore
+            const [currentPath, setCurrentPath] = useState([]); // Array de pastas navegadas
+            const [loading, setLoading] = useState(true);
+            const [currentTrack, setCurrentTrack] = useState(null);
+            const [isPlaying, setIsPlaying] = useState(false);
+            const [zipInstance, setZipInstance] = useState(null);
+            const [fullZipBlob, setFullZipBlob] = useState(null);
+            const [demoMode, setDemoMode] = useState(false);
+            
+            const audioRef = useRef(null);
+
+            // 1. Carregar ZIP e Construir Árvore
+            useEffect(() => {
+                const init = async () => {
+                    try {
+                        setLoading(true);
+                        const response = await fetch(ZIP_FILENAME);
+                        if (!response.ok) throw new Error("ZIP não encontrado");
+                        
+                        const blob = await response.blob();
+                        setFullZipBlob(blob);
+                        
+                        const zip = await JSZip.loadAsync(blob);
+                        setZipInstance(zip);
+                        
+                        // Construir Árvore de Arquivos
+                        const tree = { name: "root", isFolder: true, children: {} };
+                        
+                        zip.forEach((relativePath, entry) => {
+                            if (entry.dir) return; // Ignora entradas de diretório vazias, processamos pelo path do arquivo
+                            
+                            const parts = relativePath.split('/');
+                            let currentLevel = tree;
+                            
+                            parts.forEach((part, index) => {
+                                const isFile = index === parts.length - 1;
+                                
+                                if (isFile) {
+                                    // É um arquivo
+                                    currentLevel.children[part] = {
+                                        name: part,
+                                        path: relativePath,
+                                        isFolder: false,
+                                        isAudio: /\.(mp3|wav|ogg|m4a)$/i.test(part),
+                                        size: entry._data.uncompressedSize,
+                                        date: entry.date
+                                    };
+                                } else {
+                                    // É uma pasta
+                                    if (!currentLevel.children[part]) {
+                                        currentLevel.children[part] = {
+                                            name: part,
+                                            isFolder: true,
+                                            children: {}
+                                        };
+                                    }
+                                    currentLevel = currentLevel.children[part];
+                                }
+                            });
+                        });
+                        
+                        setFileTree(tree);
+                    } catch (err) {
+                        console.warn("Entrando em Modo Demo");
+                        setDemoMode(true);
+                        // Mock Tree para Demo
+                        setFileTree({
+                            name: "root",
+                            isFolder: true,
+                            children: {
+                                "Sertanejo": {
+                                    name: "Sertanejo", isFolder: true, children: {
+                                        "Gusttavo Lima": { name: "Gusttavo Lima", isFolder: true, children: {
+                                            "01 - Bloqueado.mp3": { name: "01 - Bloqueado.mp3", isFolder: false, isAudio: true, size: 4000000 },
+                                            "02 - Nota de Repúdio.mp3": { name: "02 - Nota de Repúdio.mp3", isFolder: false, isAudio: true, size: 3500000 }
+                                        }},
+                                        "Jorge e Mateus": { name: "Jorge e Mateus", isFolder: true, children: {
+                                            "01 - Todo Seu.mp3": { name: "01 - Todo Seu.mp3", isFolder: false, isAudio: true, size: 4100000 }
+                                        }}
+                                    }
+                                },
+                                "Ofertas da Semana": {
+                                    name: "Ofertas da Semana", isFolder: true, children: {
+                                        "Vinheta Açougue.mp3": { name: "Vinheta Açougue.mp3", isFolder: false, isAudio: true, size: 1200000 },
+                                        "Vinheta Padaria.mp3": { name: "Vinheta Padaria.mp3", isFolder: false, isAudio: true, size: 1100000 }
+                                    }
+                                },
+                                "Encarte Digital.pdf": { name: "Encarte Digital.pdf", isFolder: false, isAudio: false, size: 500000 },
+                                "Leia-me.txt": { name: "Leia-me.txt", isFolder: false, isAudio: false, size: 200 }
+                            }
+                        });
+                    } finally {
+                        setLoading(false);
+                    }
+                };
+                init();
+            }, []);
+
+            // 2. Lógica de Navegação
+            const getCurrentFolder = () => {
+                let current = fileTree;
+                for (const folderName of currentPath) {
+                    if (current && current.children) {
+                        current = current.children[folderName];
+                    }
+                }
+                return current;
+            };
+
+            const enterFolder = (folderName) => {
+                setCurrentPath([...currentPath, folderName]);
+            };
+
+            const goBack = () => {
+                setCurrentPath(currentPath.slice(0, -1));
+            };
+
+            const navigateToBreadcrumb = (index) => {
+                if (index === -1) setCurrentPath([]);
+                else setCurrentPath(currentPath.slice(0, index + 1));
+            };
+
+            // 3. Player e Downloads
+            const handlePlay = async (file) => {
+                if (currentTrack?.path === file.path) {
+                    if (isPlaying) { audioRef.current.pause(); setIsPlaying(false); }
+                    else { audioRef.current.play(); setIsPlaying(true); }
+                    return;
+                }
+
+                if (demoMode && file.isAudio) {
+                    alert("Modo Demo: Adicione o arquivo musicas.zip para tocar.");
+                    return;
+                }
+
+                try {
+                    const content = await zipInstance.file(file.path).async("blob");
+                    const url = URL.createObjectURL(content);
+                    setCurrentTrack({ ...file, url });
+                    setIsPlaying(true);
+                    setTimeout(() => audioRef.current?.play(), 50);
+                } catch (e) {
+                    console.error("Erro ao abrir arquivo", e);
+                }
+            };
+
+            const downloadFile = async (e, file) => {
+                e.stopPropagation();
+                if (demoMode) return alert("Download indisponível no Modo Demo");
+                
+                const content = await zipInstance.file(file.path).async("blob");
+                const url = URL.createObjectURL(content);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = file.name;
+                a.click();
+            };
+
+            const downloadFullZip = () => {
+                if (demoMode) return alert("Download indisponível no Modo Demo");
+                const url = URL.createObjectURL(fullZipBlob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = ZIP_FILENAME;
+                a.click();
+            };
+
+            const formatBytes = (bytes) => {
+                if (!bytes) return '--';
+                const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+                const i = Math.floor(Math.log(bytes) / Math.log(1024));
+                return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + sizes[i];
+            };
+
+            // Renderização da View Atual
+            const currentFolderData = getCurrentFolder();
+            const items = currentFolderData?.children ? Object.values(currentFolderData.children) : [];
+            
+            // Separar pastas de arquivos
+            const folders = items.filter(i => i.isFolder).sort((a, b) => a.name.localeCompare(b.name));
+            const files = items.filter(i => !i.isFolder).sort((a, b) => a.name.localeCompare(b.name));
+
+            return (
+                <div className="min-h-screen relative font-sans pb-24">
+                    <BackgroundParticles />
+                    
+                    {/* --- HEADER --- */}
+                    <header className="relative z-10 pt-10 pb-6 text-center border-b border-white/10 bg-black/50 backdrop-blur-md">
+                        <div className="container mx-auto px-4">
+                            <h1 className="font-display text-4xl md:text-6xl font-bold mb-2 tracking-tighter">
+                                SUPERMERCADO <span className="text-rezendeRed">REZENDE</span>
+                            </h1>
+                            <p className="text-gray-400 text-lg font-light tracking-wide mb-6">
+                                & FAZENDA <span className="text-white font-semibold">RESENDE</span> <span className="mx-2">|</span> CD 2026
+                            </p>
+                            
+                            {/* Instagram Button Only */}
+                            <a 
+                                href="https://instagram.com/supermercado_.rezende" 
+                                target="_blank"
+                                className="inline-flex items-center gap-2 bg-gradient-to-r from-purple-600 to-rezendeRed hover:to-red-500 text-white px-6 py-2 rounded-full font-bold text-sm transition-all transform hover:scale-105 shadow-lg shadow-red-900/30"
+                            >
+                                <i className="fab fa-instagram text-lg"></i>
+                                Seguir @supermercado_.rezende
+                            </a>
+                        </div>
+                    </header>
+
+                    {/* --- MAIN EXPLORER AREA --- */}
+                    <main className="container mx-auto px-4 py-8 relative z-10 max-w-5xl">
+                        
+                        <div className="glass-panel rounded-2xl overflow-hidden min-h-[500px] flex flex-col shadow-2xl">
+                            
+                            {/* Toolbar & Breadcrumbs */}
+                            <div className="bg-white/5 border-b border-white/5 p-4 flex flex-col md:flex-row gap-4 justify-between items-center">
+                                {/* Breadcrumbs */}
+                                <div className="flex items-center gap-2 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 scrollbar-hide text-sm">
+                                    <button 
+                                        onClick={() => navigateToBreadcrumb(-1)}
+                                        className={`hover:text-white transition-colors flex items-center gap-1 ${currentPath.length === 0 ? 'text-white font-bold' : 'text-gray-500'}`}
+                                    >
+                                        <i className="fas fa-home"></i> Início
+                                    </button>
+                                    
+                                    {currentPath.map((folder, index) => (
+                                        <div key={index} className="flex items-center gap-2 flex-shrink-0">
+                                            <span className="text-gray-600">/</span>
+                                            <button 
+                                                onClick={() => navigateToBreadcrumb(index)}
+                                                className={`hover:text-white transition-colors whitespace-nowrap ${index === currentPath.length - 1 ? 'text-rezendeRed font-bold' : 'text-gray-400'}`}
+                                            >
+                                                {folder}
+                                            </button>
+                                        </div>
+                                    ))}
+                                </div>
+
+                                {/* Action Buttons */}
+                                <div className="flex gap-2">
+                                    {currentPath.length > 0 && (
+                                        <button onClick={goBack} className="px-3 py-1.5 rounded-lg bg-gray-800 hover:bg-gray-700 text-xs text-white transition-colors">
+                                            <i className="fas fa-arrow-up mr-1"></i> Voltar
+                                        </button>
+                                    )}
+                                    <button onClick={downloadFullZip} className="px-4 py-1.5 rounded-lg bg-rezendeRed hover:bg-red-700 text-xs text-white font-bold transition-colors shadow-lg shadow-red-900/40">
+                                        <i className="fas fa-download mr-1"></i> Baixar Tudo (.zip)
+                                    </button>
+                                </div>
+                            </div>
+
+                            {/* Content View */}
+                            <div className="flex-1 p-6 bg-black/40">
+                                {loading ? (
+                                    <div className="h-full flex flex-col items-center justify-center text-gray-500 py-20">
+                                        <i className="fas fa-circle-notch fa-spin text-3xl mb-2 text-rezendeRed"></i>
+                                        <p>Lendo disco...</p>
+                                    </div>
+                                ) : (
+                                    <div className="animate-fade-in">
+                                        {/* SECTION: FOLDERS (GRID) */}
+                                        {folders.length > 0 && (
+                                            <div className="mb-8">
+                                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Pastas</h3>
+                                                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-4">
+                                                    {folders.map((folder) => (
+                                                        <div 
+                                                            key={folder.name}
+                                                            onClick={() => enterFolder(folder.name)}
+                                                            className="folder-card group bg-gray-800/40 border border-white/5 p-4 rounded-xl cursor-pointer transition-all flex flex-col items-center justify-center text-center gap-2"
+                                                        >
+                                                            <div className="w-16 h-12 flex items-center justify-center relative">
+                                                                <i className="fas fa-folder text-yellow-500/90 text-5xl absolute group-hover:scale-110 transition-transform"></i>
+                                                                {/* Folder Content Hint */}
+                                                                <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 mt-1 ml-2 w-10 h-8 bg-white/10 rounded-sm"></div>
+                                                            </div>
+                                                            <span className="text-sm font-medium text-gray-300 group-hover:text-white truncate w-full px-2">
+                                                                {folder.name}
+                                                            </span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* SECTION: FILES (LIST) */}
+                                        {(files.length > 0 || folders.length === 0) && (
+                                            <div>
+                                                <h3 className="text-xs font-bold text-gray-500 uppercase tracking-widest mb-4">Arquivos</h3>
+                                                {files.length === 0 && folders.length === 0 ? (
+                                                    <div className="text-center text-gray-600 py-10">
+                                                        Pasta vazia
+                                                    </div>
+                                                ) : (
+                                                    <div className="flex flex-col gap-1">
+                                                        {files.map((file) => (
+                                                            <div 
+                                                                key={file.name}
+                                                                onClick={() => file.isAudio ? handlePlay(file) : null}
+                                                                className={`group flex items-center justify-between p-3 rounded-lg border border-transparent transition-all cursor-pointer ${
+                                                                    currentTrack?.path === file.path 
+                                                                    ? 'bg-rezendeRed/10 border-rezendeRed/30' 
+                                                                    : 'hover:bg-white/5 hover:border-white/10'
+                                                                }`}
+                                                            >
+                                                                <div className="flex items-center gap-4 min-w-0">
+                                                                    <div className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                                                                        file.isAudio 
+                                                                            ? (currentTrack?.path === file.path && isPlaying ? 'bg-rezendeRed text-white' : 'bg-gray-800 text-gray-400 group-hover:bg-white group-hover:text-black')
+                                                                            : 'bg-gray-800 text-blue-400'
+                                                                    }`}>
+                                                                        {file.isAudio ? (
+                                                                             currentTrack?.path === file.path && isPlaying ? <i className="fas fa-pause text-xs"></i> : <i className="fas fa-play text-xs pl-0.5"></i>
+                                                                        ) : (
+                                                                            <i className="fas fa-file-alt text-xs"></i>
+                                                                        )}
+                                                                    </div>
+                                                                    <div className="min-w-0">
+                                                                        <p className={`text-sm font-medium truncate ${currentTrack?.path === file.path ? 'text-rezendeRed' : 'text-gray-200'}`}>
+                                                                            {file.name}
+                                                                        </p>
+                                                                        <p className="text-xs text-gray-500">{formatBytes(file.size)}</p>
+                                                                    </div>
+                                                                </div>
+
+                                                                <div className="flex items-center gap-4">
+                                                                    {file.isAudio && currentTrack?.path === file.path && isPlaying && (
+                                                                        <div className="flex items-end gap-1 h-3">
+                                                                            <div className="bar"></div>
+                                                                            <div className="bar"></div>
+                                                                            <div className="bar"></div>
+                                                                        </div>
+                                                                    )}
+                                                                    <button 
+                                                                        onClick={(e) => downloadFile(e, file)}
+                                                                        className="w-8 h-8 flex items-center justify-center rounded-full text-gray-600 hover:text-white hover:bg-gray-700 transition-colors"
+                                                                        title="Download Arquivo"
+                                                                    >
+                                                                        <i className="fas fa-download text-xs"></i>
+                                                                    </button>
+                                                                </div>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                            
+                            {/* Footer do Explorer */}
+                            <div className="bg-black/80 px-4 py-2 text-[10px] text-gray-600 flex justify-between border-t border-white/5">
+                                <span>{items.length} itens nesta pasta</span>
+                                <span>Explorer Mode v2.0</span>
+                            </div>
+                        </div>
+                        
+                        {/* Aviso Demo */}
+                        {demoMode && (
+                            <div className="mt-4 flex items-center justify-center gap-2 text-yellow-600 text-sm bg-yellow-900/10 p-2 rounded border border-yellow-900/30">
+                                <i className="fas fa-info-circle"></i>
+                                <span>Modo Demo: Arquivo <strong>musicas.zip</strong> não encontrado na raiz.</span>
+                            </div>
+                        )}
+
+                    </main>
+
+                    {/* --- STICKY PLAYER BOTTOM --- */}
+                    <div className={`fixed bottom-0 left-0 right-0 bg-black/90 backdrop-blur-xl border-t border-red-900/30 p-4 transform transition-transform duration-300 z-50 ${currentTrack ? 'translate-y-0' : 'translate-y-full'}`}>
+                        <div className="container mx-auto max-w-5xl flex items-center justify-between gap-4">
+                            <div className="flex items-center gap-3 overflow-hidden w-1/3">
+                                <div className="w-12 h-12 bg-gradient-to-br from-rezendeRed to-black rounded flex items-center justify-center shadow-lg flex-shrink-0">
+                                    <i className="fas fa-music text-white animate-pulse"></i>
+                                </div>
+                                <div className="min-w-0">
+                                    <p className="text-white font-bold text-sm truncate">{currentTrack?.name}</p>
+                                    <p className="text-rezendeRed text-xs uppercase tracking-wider">Tocando Agora</p>
+                                </div>
+                            </div>
+                            
+                            <audio 
+                                ref={audioRef} 
+                                src={currentTrack?.url} 
+                                controls 
+                                className="w-full max-w-md h-8 invert opacity-80 hover:opacity-100 transition-opacity"
+                                onPlay={() => setIsPlaying(true)}
+                                onPause={() => setIsPlaying(false)}
+                                onEnded={() => setIsPlaying(false)}
+                            />
+
+                            <div className="hidden md:flex w-1/3 justify-end">
+                                <span className="text-xs text-gray-500 uppercase tracking-widest">Rezende Player</span>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
